@@ -1,51 +1,32 @@
-from typing import Union
-
 from fastapi import FastAPI
-import os
-import pkgutil
-import importlib
-import airflow.providers
+from fastapi.middleware.cors import CORSMiddleware
+import logging
 
-app = FastAPI()
+from app.config import settings
+from app.core.operators import load_operators
+from app.api.routes import operators, files, health
 
+# Setup logging
+logging.basicConfig(level=settings.log_level)
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+app = FastAPI(title=settings.app_name, debug=settings.debug)
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
+# Include routers
+app.include_router(operators.router)
+app.include_router(files.router)
+app.include_router(health.router)
 
-@app.get("/listFiles")
-def list_files():
-    files = [f for f in os.listdir('.') if os.path.isfile(f)]
-    return {"files_final": files}
-
-@app.get("/path")
-def show_path():
-    return {"path": airflow.providers.__path__}
-
-@app.get("/operators")
-def list_operators():
-    operators = {}
-    try:
-        for importer, modname, ispkg in pkgutil.walk_packages(
-            path=airflow.providers.__path__,
-            prefix='airflow.providers.',
-        ):
-            if 'operators' in modname and not ispkg:
-                try:
-                    module = importlib.import_module(modname)
-                    operator_group = {modname: []}
-                    # print(f"\n{modname}:")
-                    for item in dir(module):
-                        if 'Operator' in item and not item.startswith('_'):
-                            operator_group[modname].append(item)
-                    operators.update(operator_group)
-                except Exception as e:
-                    pass
-        return operators
-    except ImportError:
-        print("No providers installed")
+@app.on_event("startup")
+async def startup_event():
+    """Load operators at startup"""
+    ops, errs = load_operators()
+    logging.getLogger(__name__).info(f"Loaded {len(ops)} operator modules")
