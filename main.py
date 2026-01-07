@@ -4,7 +4,7 @@ import logging
 
 from app.config import settings
 from app.core.operators import load_operators
-from app.api.routes import operators, files, health
+from app.api.routes import operators, files, health, dags
 
 # Setup logging
 logging.basicConfig(level=settings.log_level)
@@ -22,8 +22,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(operators.router)
-app.include_router(files.router)
-app.include_router(health.router)
+app.include_router(dags.router)
+# app.include_router(files.router)
+# app.include_router(health.router)
 
 @app.on_event("startup")
 async def startup_event():
